@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  #FastAPI
+  api:
+    build: .
+    container_name: research_agent_api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env  # 自动读取环境变量
+    volumes:
+
+      - ./:/app
+      - ./papers:/app/papers
+      - ./feedback_memory_db:/app/feedback_memory_db
+      - ./research_checkpoints.sqlite:/app/research_checkpoints.sqlite
+      - ./seen_papers.sqlite:/app/seen_papers.sqlite
+    depends_on:
+      - redis
+      # - qdrant
+    restart: unless-stopped
+    networks:
+      - agent_network
+
+  #Redis
+  redis:
+    image: redis/redis-stack-server:latest
+    container_name: research_agent_redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - agent_network
+
+  # #Qdrant
+  # qdrant:
+  #   image: qdrant/qdrant:latest
+  #   container_name: research_agent_qdrant
+  #   ports:
+  #     - "6335:6333"
+  #     - "6336:6334"
+  #   volumes:
+  #     - ./qdrant_storage:/qdrant/storage
+  #   restart: unless-stopped
+  #   networks:
+  #     - agent_network
+
+volumes:
+  redis_data:
+
+networks:
+  agent_network:
+    driver: bridge

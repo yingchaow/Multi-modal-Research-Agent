@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# macOS / IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Runtime databases and checkpoints
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+research_checkpoints.sqlite*
+seen_papers.sqlite*
+
+# Vector stores and generated data
+qdrant_storage/
+feedback_memory_db/
+papers/
+
+# Logs and temporary files
+*.log
+tmp/
+temp/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+

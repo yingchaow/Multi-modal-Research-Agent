@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>论文检索研究系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .pdf-export-mode { background-color: white !important; color: black !important; }
+        .pdf-export-mode #outlineContent {
+            color: #111827 !important;
+            font-size: 13px;
+            line-height: 1.75;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+        .pdf-export-mode h1,
+        .pdf-export-mode h2,
+        .pdf-export-mode h3,
+        .pdf-export-mode h4,
+        .pdf-export-mode p,
+        .pdf-export-mode li,
+        .pdf-export-mode blockquote,
+        .pdf-export-mode table,
+        .pdf-export-mode pre {
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+        .pdf-export-mode h1,
+        .pdf-export-mode h2,
+        .pdf-export-mode h3,
+        .pdf-export-mode h4 {
+            break-after: avoid;
+            page-break-after: avoid;
+            margin-top: 18px;
+        }
+        .pdf-export-mode ul,
+        .pdf-export-mode ol {
+            break-inside: auto;
+            page-break-inside: auto;
+        }
+        .pdf-export-mode a {
+            color: #1d4ed8 !important;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 h-screen flex flex-col p-6 font-sans relative overflow-hidden">
+
+    <div id="toastContainer" class="absolute top-6 right-6 z-50 flex flex-col gap-3 pointer-events-none"></div>
+
+    <header class="mb-6 flex justify-between items-center">
+        <h1 class="text-2xl font-bold text-blue-400 font-mono">论文检索Agent</h1>
+        <span class="text-sm font-bold text-gray-500" id="status-indicator">● 系统就绪</span>
+    </header>
+
+    <div class="flex gap-4 mb-6">
+        <input type="text" id="topicInput" placeholder="输入你想研究的主题..." 
+            class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500 transition shadow-inner">
+            
+        <input type="text" id="resumeIdInput" placeholder="断线恢复: 粘贴 Thread ID" 
+            class="w-64 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:border-yellow-500 transition shadow-inner text-sm font-mono placeholder-gray-600">
+            
+        <button id="actionBtn" onclick="toggleResearch()" 
+            class="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-lg font-bold transition shadow-[0_0_15px_rgba(37,99,235,0.4)] w-40 flex justify-center items-center">
+            开始研究
+        </button>
+    </div>
+
+    <div id="knowledgeSearchPanel" class="mb-4 bg-gray-800/80 border border-gray-700 rounded-lg shadow-sm overflow-hidden flex-shrink-0">
+        <div class="flex gap-3 p-3">
+            <input type="text" id="knowledgeInput" placeholder="检索论文知识库，例如：跨模态对齐、扩散模型分割、检索评估指标"
+                class="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 focus:outline-none focus:border-emerald-500 transition text-sm">
+            <button id="knowledgeSearchBtn" onclick="searchKnowledge()"
+                class="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2 rounded-lg font-bold text-sm transition">
+                检索知识
+            </button>
+        </div>
+        <div id="knowledgeResults" class="hidden border-t border-gray-700 bg-gray-900/70 p-4 max-h-64 overflow-y-auto no-scrollbar text-sm"></div>
+    </div>
+
+    <div id="activeNodeContainer" class="hidden mb-4 bg-gray-800/80 border border-gray-700 rounded-lg shadow-sm font-mono overflow-hidden transition-all duration-300 flex-shrink-0">
+        <div class="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-750 transition" onclick="toggleNodeHistory()">
+            <div class="flex items-center">
+                <svg id="nodeSpinner" class="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <div class="text-sm text-gray-300 select-none">
+                    Agent 网络流转中 <span class="mx-2 text-gray-600">|</span> 当前节点: 
+                    <span id="activeNodeName" class="font-bold text-blue-400 uppercase tracking-wider ml-1">初始化...</span>
+                </div>
+            </div>
+            <div class="flex items-center text-xs text-gray-500 gap-2">
+                <span id="toggleText">展开历史</span>
+                <svg id="historyChevron" class="w-5 h-5 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </div>
+        </div>
+        <div id="nodeHistoryList" class="hidden border-t border-gray-700 bg-gray-900/60 p-3 max-h-48 overflow-y-auto no-scrollbar text-sm"></div>
+    </div>
+
+    <div id="outlineCard" class="hidden flex-1 flex-col bg-gray-800 border border-gray-700 rounded-xl shadow-2xl overflow-hidden min-h-[300px]">
+        
+        <div class="bg-gray-900 px-6 py-3 border-b border-gray-700 flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <span class="text-xl">📄</span>
+                <span class="font-bold text-gray-300">研究提纲</span>
+            </div>
+            
+            <div class="flex items-center gap-2">
+                <select id="exportFormat" disabled class="bg-gray-800 text-gray-500 text-sm rounded-lg px-2 py-1.5 outline-none border border-gray-700 cursor-not-allowed">
+                    <option value="md">Markdown (.md)</option>
+                    <option value="doc">Word 文档 (.doc)</option>
+                    <option value="pdf">PDF 文档 (.pdf)</option>
+                </select>
+                <button id="saveBtn" onclick="saveReport()" disabled 
+                    class="bg-gray-700 text-gray-500 px-4 py-1.5 rounded-lg font-bold text-sm transition-all duration-300 cursor-not-allowed flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    <span id="saveBtnText">保存报告</span>
+                </button>
+            </div>
+        </div>
+
+        <div id="decisionPanel" class="hidden bg-blue-900/30 border-b border-blue-800/50 p-3 shadow-inner">
+            <h3 class="text-blue-300 font-bold mb-2 flex items-center gap-2 text-sm">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                等待主管审核提纲...
+            </h3>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+                <button onclick="sendDecision('y')" class="bg-green-600 hover:bg-green-500 text-white py-1.5 rounded text-sm font-medium shadow transition">✅ 满意，生成完整报告</button>
+                <button onclick="sendDecision('c')" class="bg-yellow-600 hover:bg-yellow-500 text-white py-1.5 rounded text-sm font-medium shadow transition">🔄 内容不对，换篇论文</button>
+                <button onclick="sendDecision('r')" class="bg-orange-600 hover:bg-orange-500 text-white py-1.5 rounded text-sm font-medium shadow transition">✍️ 意见打回，原地重写</button>
+                <button onclick="sendDecision('n')" class="bg-red-600 hover:bg-red-500 text-white py-1.5 rounded text-sm font-medium shadow transition">⏹ 强制中断流程</button>
+            </div>
+            <input type="text" id="feedbackInput" placeholder="如果选择【意见打回】，请在此输入具体修改指导意见 (选填)..." 
+                class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-blue-500 transition">
+        </div>
+        
+        <div id="previewContainer" class="flex-1 p-8 overflow-y-auto no-scrollbar bg-gray-800">
+            <div id="pdfWrapper" class="p-4 rounded">
+                <article id="outlineContent" class="prose prose-invert prose-blue max-w-none">
+                </article>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const actionBtn = document.getElementById('actionBtn');
+        const statusIndicator = document.getElementById('status-indicator');
+        const activeNodeContainer = document.getElementById('activeNodeContainer');
+        const activeNodeName = document.getElementById('activeNodeName');
+        const nodeSpinner = document.getElementById('nodeSpinner');
+        const nodeHistoryList = document.getElementById('nodeHistoryList');
+        const historyChevron = document.getElementById('historyChevron');
+        const toggleText = document.getElementById('toggleText');
+        
+        const outlineCard = document.getElementById('outlineCard');
+        const outlineContent = document.getElementById('outlineContent');
+        const previewContainer = document.getElementById('previewContainer');
+        const pdfWrapper = document.getElementById('pdfWrapper');
+        
+        const saveBtn = document.getElementById('saveBtn');
+        const saveBtnText = document.getElementById('saveBtnText');
+        const exportFormat = document.getElementById('exportFormat'); 
+        const decisionPanel = document.getElementById('decisionPanel');
+        const feedbackInput = document.getElementById('feedbackInput');
+        const toastContainer = document.getElementById('toastContainer');
+        const knowledgeInput = document.getElementById('knowledgeInput');
+        const knowledgeSearchBtn = document.getElementById('knowledgeSearchBtn');
+        const knowledgeResults = document.getElementById('knowledgeResults');
+        
+        let eventSource = null; 
+        let isRunning = false;  
+        let isHistoryOpen = false; 
+        let documentMarkdown = ""; 
+        let currentThreadId = "";
+        let currentNode = ""; 
+        let finalFullReport = ""; 
+        let isUserApproved = false;
+
+        function escapeHtml(value) {
+            return String(value || "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // 🌟 新增：优雅的全局 Toast 通知函数
+        function showToast(message, type = 'error') {
+            const toast = document.createElement('div');
+            
+            // 样式定义：红代表错误，绿代表成功
+            const bgColor = type === 'error'
+                ? 'bg-red-500/90 border-red-400'
+                : (type === 'warning' ? 'bg-yellow-500/90 border-yellow-400' : 'bg-green-500/90 border-green-400');
+            const icon = type === 'error' ? '⚠️' : (type === 'warning' ? 'ℹ️' : '✅');
+            
+            toast.className = `flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg text-white font-bold text-sm backdrop-blur-sm transition-all duration-300 transform translate-x-full opacity-0 ${bgColor}`;
+            toast.innerHTML = `<span>${icon}</span><span>${escapeHtml(message)}</span>`;
+            
+            toastContainer.appendChild(toast);
+            
+            // 触发进入动画
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-x-full', 'opacity-0');
+            });
+            
+            // 5秒后自动消失并清理 DOM
+            setTimeout(() => {
+                toast.classList.add('translate-x-full', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 5000);
+        }
+
+        function toggleNodeHistory() {
+            isHistoryOpen = !isHistoryOpen;
+            if (isHistoryOpen) {
+                nodeHistoryList.classList.remove('hidden'); historyChevron.classList.add('rotate-180'); toggleText.innerText = "收起历史";
+            } else {
+                nodeHistoryList.classList.add('hidden'); historyChevron.classList.remove('rotate-180'); toggleText.innerText = "展开历史";
+            }
+        }
+
+        function toggleResearch() {
+            if (isRunning) stopResearch(true); else startResearch();
+        }
+
+        async function searchKnowledge() {
+            const query = knowledgeInput.value.trim();
+            if (!query) {
+                showToast("请输入要检索的知识问题。", "error");
+                return;
+            }
+
+            knowledgeSearchBtn.disabled = true;
+            knowledgeSearchBtn.innerText = "检索中...";
+            knowledgeResults.classList.remove('hidden');
+            knowledgeResults.innerHTML = `<p class="text-gray-400">正在检索知识库...</p>`;
+
+            try {
+                const response = await fetch(`/api/knowledge/search?query=${encodeURIComponent(query)}&limit=5`);
+                const data = await response.json();
+
+                if (!response.ok || data.status === "error") {
+                    throw new Error(data.message || "知识库检索失败");
+                }
+
+                renderKnowledgeResults(data.results || []);
+            } catch (error) {
+                knowledgeResults.innerHTML = `<p class="text-red-400 font-bold">${escapeHtml(error.message)}</p>`;
+                showToast(error.message, "error");
+            } finally {
+                knowledgeSearchBtn.disabled = false;
+                knowledgeSearchBtn.innerText = "检索知识";
+            }
+        }
+
+        function renderKnowledgeResults(results) {
+            if (!results.length) {
+                knowledgeResults.innerHTML = `<p class="text-gray-400">没有检索到相关论文知识。</p>`;
+                return;
+            }
+
+            knowledgeResults.innerHTML = results.map((item, index) => {
+                const content = String(item.content || "").slice(0, 900);
+                const url = item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" class="text-emerald-300 hover:text-emerald-200 underline">原文</a>` : "";
+                return `
+                    <div class="mb-4 pb-4 border-b border-gray-700 last:border-b-0 last:mb-0 last:pb-0">
+                        <div class="flex items-start justify-between gap-3 mb-2">
+                            <h3 class="text-emerald-300 font-bold">${index + 1}. ${escapeHtml(item.title || "未知论文")}</h3>
+                            ${url}
+                        </div>
+                        <div class="text-xs text-gray-500 mb-2">${escapeHtml(item.topic || "未知主题")} ${item.published ? " | " + escapeHtml(item.published) : ""}</div>
+                        <pre class="whitespace-pre-wrap text-gray-300 font-sans leading-relaxed">${escapeHtml(content)}${item.content && item.content.length > 900 ? "\n...[内容已截断]" : ""}</pre>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        function startResearch(providedThreadId = null) {
+            if (eventSource) {
+                eventSource.close();
+            }
+            const topic = document.getElementById('topicInput').value.trim();
+            
+            const inputId = document.getElementById('resumeIdInput').value.trim();
+            const cachedId = sessionStorage.getItem("my_thread_id") || "";
+            const resumeId = providedThreadId || inputId || (topic ? "" : cachedId); 
+
+            // 如果发起的是全新主题，清空旧缓存
+            if (!providedThreadId && !inputId && topic) {
+                sessionStorage.removeItem("my_thread_id");
+            }
+
+            if (!topic && !resumeId) { showToast("请输入研究主题或要恢复的 Thread ID！", "error"); return; }
+
+            isRunning = true; documentMarkdown = ""; finalFullReport = ""; isUserApproved = false; currentNode = ""; outlineContent.innerHTML = ""; nodeHistoryList.innerHTML = ""; 
+            outlineCard.classList.add('hidden'); outlineCard.classList.remove('flex'); decisionPanel.classList.remove('block'); decisionPanel.classList.add('hidden');
+            
+            saveBtn.disabled = true; exportFormat.disabled = true;
+            saveBtn.className = "bg-gray-700 text-gray-500 px-4 py-1.5 rounded-lg font-bold text-sm transition-all duration-300 cursor-not-allowed flex items-center gap-2";
+            exportFormat.className = "bg-gray-800 text-gray-500 text-sm rounded-lg px-2 py-1.5 outline-none border border-gray-700 cursor-not-allowed";
+            saveBtnText.innerText = "保存报告";
+            
+            nodeSpinner.classList.remove('hidden'); activeNodeContainer.classList.remove('hidden');
+            activeNodeName.innerText = resumeId ? '尝试连接并恢复会话...' : '启动多智能体网络...';
+            
+            actionBtn.classList.replace('bg-blue-600', 'bg-red-600'); actionBtn.classList.replace('hover:bg-blue-500', 'hover:bg-red-500');
+            actionBtn.innerHTML = '⏹ 终止连接';
+            statusIndicator.innerHTML = '<span class="text-yellow-400 animate-pulse">● Agent 连接中...</span>';
+
+            const encodedTopic = encodeURIComponent(topic);
+            const encodedThreadId = encodeURIComponent(resumeId);
+            eventSource = new EventSource(`/api/research?topic=${encodedTopic}&thread_id=${encodedThreadId}`);
+
+            eventSource.onmessage = function(event) {
+                console.log("收到后端原始数据:", event.data);
+                const data = JSON.parse(event.data);
+                
+                if (data.type === 'system') {
+                    showToast(data.content, "success");
+                    const match = data.content.match(/Thread ID: (.+)/);
+                    if (match) {
+                        currentThreadId = match[1].trim(); 
+                        sessionStorage.setItem("my_thread_id", currentThreadId);
+                    }
+                    const timeString = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+                    nodeHistoryList.innerHTML += `<div class="mb-2 flex items-center gap-3"><span class="text-gray-500 font-mono text-xs">[${timeString}]</span><span class="text-gray-400 font-mono text-xs">${escapeHtml(data.content)}</span></div>`;
+                    nodeHistoryList.scrollTop = nodeHistoryList.scrollHeight;
+                }
+                
+                else if (data.type === 'node') {
+                    currentNode = data.content; activeNodeName.innerText = data.content;
+                    const timeString = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+                    nodeHistoryList.innerHTML += `<div class="mb-2 flex items-center gap-3"><span class="text-gray-500 font-mono text-xs">[${timeString}]</span><span class="text-blue-400 font-bold uppercase tracking-wider text-xs bg-blue-900/30 px-2 py-0.5 rounded border border-blue-800/50">⚡ ${escapeHtml(data.content)}</span></div>`;
+                    nodeHistoryList.scrollTop = nodeHistoryList.scrollHeight;
+                } 
+                else if (data.type === 'warning') {
+                    const timeString = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+                    const nodeText = data.node ? `[${data.node}] ` : "";
+                    nodeHistoryList.innerHTML += `<div class="mb-2 flex items-start gap-3"><span class="text-gray-500 font-mono text-xs">[${timeString}]</span><span class="text-yellow-300 text-xs bg-yellow-900/30 px-2 py-1 rounded border border-yellow-800/50">${escapeHtml(nodeText + data.content)}</span></div>`;
+                    nodeHistoryList.scrollTop = nodeHistoryList.scrollHeight;
+                    showToast(data.content, 'warning');
+                }
+                else if (data.type === 'text') {
+                    if (currentNode.toLowerCase().includes('supervis')) {
+                        if (outlineCard.classList.contains('hidden')) {
+                            outlineCard.classList.remove('hidden'); outlineCard.classList.add('flex');
+                            statusIndicator.innerHTML = '<span class="text-blue-400 animate-pulse">● 正在撰写最终提纲</span>';
+                        }
+                        documentMarkdown += data.content;
+                        outlineContent.innerHTML = marked.parse(documentMarkdown);
+                        previewContainer.scrollTop = previewContainer.scrollHeight;
+                    }
+                } 
+                else if (data.type === 'action_required') {
+                    if (data.thread_id) {
+                        currentThreadId = data.thread_id;
+                        sessionStorage.setItem("my_thread_id", currentThreadId);
+                    }
+                    
+                    if (data.full_report) finalFullReport = data.full_report;
+                    
+                    if (outlineCard.classList.contains('hidden')) { 
+                        outlineCard.classList.remove('hidden'); 
+                        outlineCard.classList.add('flex'); 
+                    }
+                    
+                    if (data.outline && data.outline.trim() !== "") {
+                        documentMarkdown = data.outline;
+                        outlineContent.innerHTML = marked.parse(documentMarkdown);
+                    } else if (documentMarkdown.length < 5) {
+                        outlineContent.innerHTML = `<p class='text-red-400 font-bold'>⚠️ 提纲展示失败：后端未传回 outline 数据。请检查 server.py 和 agent 的打包代码。</p>`;
+                    }
+                    
+                    decisionPanel.classList.remove('hidden'); 
+                    decisionPanel.classList.add('block');
+                    statusIndicator.innerHTML = '<span class="text-orange-400 animate-pulse">● 等待主管决策</span>';
+                }
+                else if (data.type === 'finish' || data.type === 'error') {
+                    if (data.type === 'error') {
+                        outlineCard.classList.remove('hidden'); outlineCard.classList.add('flex');
+                        const errorPrefix = data.node ? `[${data.node}] ` : "";
+                        outlineContent.innerHTML += `<br><p class="text-red-500 font-bold">[Agent 运行失败] ${escapeHtml(errorPrefix + data.content)}</p>`;
+                        statusIndicator.innerHTML = '<span class="text-red-500 font-bold">● 流程异常终止</span>';
+                        showToast(data.content, 'error'); 
+                        stopResearch(false, true);
+                        return;
+                    } else {
+                        showToast("任务顺利完成！", "success");
+                        if (data.full_report) {
+                            finalFullReport = data.full_report;
+                            // isUserApproved = true;
+                        }
+                    }
+                    stopResearch(false); 
+                }
+            };
+
+            eventSource.onerror = function() { 
+                if(isRunning) {
+                    const busyMessage = "系统繁忙，请刷新后再试。";
+                    outlineCard.classList.remove('hidden'); outlineCard.classList.add('flex');
+                    outlineContent.innerHTML += `<br><p class="text-red-500 font-bold">${escapeHtml(busyMessage)}</p>`;
+                    statusIndicator.innerHTML = '<span class="text-red-500 font-bold">● 系统繁忙</span>';
+                    showToast(busyMessage, "error");
+                    stopResearch(false, true); 
+                }
+            };
+        }
+
+        async function sendDecision(decisionType) {
+            if (decisionType === 'y') isUserApproved = true; 
+            
+            decisionPanel.classList.remove('block'); decisionPanel.classList.add('hidden');
+            statusIndicator.innerHTML = '<span class="text-blue-400 animate-pulse">● Agent 执行中...</span>';
+            
+            const feedback = feedbackInput.value.trim();
+            
+            const safeThreadId = sessionStorage.getItem("my_thread_id") || currentThreadId;
+            
+            if (!safeThreadId) {
+                showToast("致命错误：找不到当前会话的 ID，请刷新页面重新开始", "error");
+                stopResearch(true);
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/decision', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ thread_id: safeThreadId, decision: decisionType, feedback: feedback })
+                });
+                
+                const responseData = await response.json();
+                
+                if (!response.ok || responseData.status === "error") {
+                    throw new Error(responseData.message || "服务器业务逻辑抛出异常");
+                }
+                
+                feedbackInput.value = "";
+                console.log("决策已成功存入 Redis，正在重新唤醒 Agent...");
+                
+                startResearch(safeThreadId);
+                
+            } catch (error) {
+                console.error("提交决策失败:", error);
+                showToast("发送决策失败: " + error.message, "error");
+                
+                decisionPanel.classList.remove('hidden'); decisionPanel.classList.add('block');
+                statusIndicator.innerHTML = '<span class="text-red-500 font-bold">● 网络阻塞或身份丢失，请重新发送</span>';
+            }
+        }
+
+        function stopResearch(isManual, isNetworkError = false) {
+            if (eventSource) { eventSource.close(); eventSource = null; }
+            isRunning = false; nodeSpinner.classList.add('hidden'); activeNodeName.innerText = '执行结束';
+            actionBtn.classList.replace('bg-red-600', 'bg-blue-600'); actionBtn.classList.replace('hover:bg-red-500', 'hover:bg-blue-500');
+            actionBtn.innerHTML = '重新开始';
+            
+            if (!isManual && !isNetworkError) {
+                statusIndicator.innerHTML = '<span class="text-green-500">● 流程结束</span>';
+        
+                if (finalFullReport && finalFullReport.length > 5) {
+                    console.log("正在渲染最终生成的完整报告...");
+                    
+                    outlineCard.classList.remove('hidden'); 
+                    outlineCard.classList.add('flex');
+                    
+                    documentMarkdown = finalFullReport; 
+                    outlineContent.innerHTML = "<h2 class='text-green-400 border-b border-green-800 pb-2 mb-4 font-bold'>✅ 最终完整报告</h2>" + marked.parse(documentMarkdown);
+                    previewContainer.scrollTop = 0; 
+                    
+                    saveBtn.disabled = false; exportFormat.disabled = false;
+                    saveBtn.className = "bg-green-600 hover:bg-green-500 text-white px-4 py-1.5 rounded-lg font-bold text-sm transition-all duration-300 cursor-pointer flex items-center gap-2 shadow-[0_0_10px_rgba(34,197,94,0.4)]";
+                    exportFormat.className = "bg-gray-800 text-gray-200 text-sm rounded-lg px-2 py-1.5 outline-none border border-green-500/50 focus:border-green-400 transition-all cursor-pointer";
+                }
+            }
+        }
+
+        function saveReport() {
+            if (!documentMarkdown) return;
+            const format = exportFormat.value;
+            const topic = document.getElementById('topicInput').value.trim() || "未命名";
+            const safeTopic = topic.replace(/[\\\/\:\*\?\"\<\>\|]/g, "_"); 
+            const baseFileName = `完整报告_${safeTopic}`;
+
+            if (format === 'md') {
+                triggerDownload(documentMarkdown, `${baseFileName}.md`, "text/markdown");
+                showSaveSuccess();
+            } 
+            else if (format === 'doc') {
+                const htmlContent = document.getElementById('outlineContent').innerHTML;
+                const wordHtml = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>${topic}</title></head><body>${htmlContent}</body></html>`;
+                triggerDownload(wordHtml, `${baseFileName}.doc`, "application/msword");
+                showSaveSuccess();
+            }
+            else if (format === 'pdf') {
+                saveBtn.disabled = true; saveBtnText.innerText = "生成 PDF 中...";
+                outlineContent.classList.remove('prose-invert'); pdfWrapper.classList.add('pdf-export-mode');
+                const pdfOptions = {
+                    margin: [14, 14, 16, 14],
+                    filename: `${baseFileName}.pdf`,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2, useCORS: true, scrollY: 0, windowWidth: 980 },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                    pagebreak: {
+                        mode: ['css', 'legacy'],
+                        avoid: ['h1', 'h2', 'h3', 'h4', 'p', 'li', 'blockquote', 'table', 'pre']
+                    }
+                };
+                html2pdf().set(pdfOptions).from(pdfWrapper).save().then(() => {
+                    outlineContent.classList.add('prose-invert'); pdfWrapper.classList.remove('pdf-export-mode');
+                    saveBtn.disabled = false; saveBtnText.innerText = "保存报告"; showSaveSuccess();
+                }).catch((error) => {
+                    outlineContent.classList.add('prose-invert'); pdfWrapper.classList.remove('pdf-export-mode');
+                    saveBtn.disabled = false; saveBtnText.innerText = "保存报告";
+                    showToast("PDF 生成失败: " + error.message, "error");
+                });
+            }
+        }
+
+        function triggerDownload(content, filename, mimeType) {
+            const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+        }
+
+        function showSaveSuccess() {
+            const originalHtml = saveBtn.innerHTML;
+            saveBtn.innerHTML = `已保存`; saveBtn.classList.replace('bg-green-600', 'bg-gray-600');
+            setTimeout(() => { saveBtn.innerHTML = originalHtml; saveBtn.classList.replace('bg-gray-600', 'bg-green-600'); }, 2000);
+        }
+    </script>
+</body>
+</html>
