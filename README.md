@@ -1,42 +1,129 @@
-Multi-modal Research Agent (LangGraph Edition)
+# Multi-modal Research Agent
 
-这是一个基于 **LangGraph** 构建的多智能体学术研究系统。它能够自动检索顶级会议论文（Semantic Scholar），利用 **Qwen-VL-Max** 进行多模态图表解析，并通过人类主管（Human-in-the-loop）的实时干预来生成高质量、数千字的学术研究报告。
+A LangGraph-based multi-agent research assistant for discovering papers, analyzing multi-modal paper content, and generating structured academic research reports with human-in-the-loop control.
 
-## 核心特性
+The system combines paper retrieval, LLM-based paper screening, PDF/image analysis, report planning, review, and knowledge-base retrieval into a single workflow exposed through a FastAPI + SSE web interface.
 
-- **多智能体协同架构**：采用分布式专家模型，包含 `Arxiv Agent`（检索）、`Architect Agent`（架构/撰写）、`Multimodal Agent`（视觉解析）、`Reviewer Agent`（评审）。
-- **人类决策闭环 (Human-in-the-loop)**：在生成提纲阶段引入“人类主管”节点，支持批准、打回重写或更换论文等 4 种交互决策。
-- **状态持久化 (Redis Persistence)**：基于 Redis 实现了工业级的会话恢复机制（Thread ID），支持断线重连与历史会话唤醒。
-- **多模态深度解析**：使用“PDF嗅探器”，突破学术网站反爬限制，调用多模态模型对论文架构图与实验图表进行深度语义分析。
-- **全栈流式交互**：后端采用 FastAPI + SSE 实现打字机效果，前端通过 Tailwind CSS 构建现代化的响应式控制台。
+## Features
 
-## 系统架构
+- **Multi-agent workflow**: coordinates specialized agents for topic refinement, arXiv retrieval, multi-modal paper analysis, report writing, review, and supervision.
+- **Skill-based agent modules**: core capabilities such as architect writing, human interaction, multi-modal analysis, and arXiv paper screening are packaged as reusable skills.
+- **Human-in-the-loop decisions**: lets the user approve, reject, revise, or restart parts of the workflow from the web UI.
+- **Paper screening**: uses an LLM with few-shot criteria to decide whether each crawled arXiv paper is worth downstream reading.
+- **Multi-modal paper analysis**: downloads papers and extracts useful technical signals from figures, diagrams, and experimental results.
+- **Knowledge-base retrieval**: stores core knowledge from selected papers and lets future reports reuse related research insights.
+- **Streaming web experience**: FastAPI + Server-Sent Events provide real-time progress updates and streamed report generation.
+- **Persistent workflow state**: Redis-backed checkpointing supports session recovery by thread ID.
 
-本项目采用图拓扑结构进行逻辑流转：
-1. **启动**：用户输入主题。
-2. **检索**：Agent 获取相关顶会论文及元数据。
-3. **解析**：Multimodal Agent 下载 PDF 并提取核心实验图表。
-4. **初稿**：Architect Agent 结合图表解析结果撰写详细提纲。
-5. **挂起**：系统自动进入暂停状态，等待 Web 端人类用户的决策。
-6. **循环/终结**：根据人类反馈，系统会退回检索阶段、重写报告或生成最终 Markdown/PDF 文档。
+## Project Structure
 
-## 快速开始
+```text
+.
+├── agent_nodes/          # Thin LangGraph node wrappers
+├── core/                 # Session and runtime utilities
+├── integrations/         # External service integrations
+├── memory/               # Local memory, paper history, and knowledge storage
+├── scripts/              # Utility and debugging scripts
+├── skills/               # Reusable skill modules used by agents
+├── workflow/             # LangGraph workflow definition
+├── server.py             # FastAPI web server
+├── index.html            # Frontend console
+├── config.py             # Model and service configuration
+└── docker-compose.yml    # Local service orchestration
+```
 
-### 环境配置
-推荐在 macOS (M1/M2) 的虚拟环境下运行：
+## Workflow
+
+1. The user enters a research topic in the web interface.
+2. The human-interaction skill converts the topic into arXiv-friendly English keywords.
+3. The arXiv agent retrieves candidate papers and calls the paper-screening skill.
+4. The multi-modal skill analyzes the selected paper and its figures.
+5. The architect skill drafts a structured report using paper content and relevant knowledge-base entries.
+6. The user reviews the outline/report and can approve, reject, revise, or request a new paper.
+7. The system produces the final Markdown-style research report.
+
+## Quick Start
+
+### 1. Create a virtual environment
 
 ```bash
-# 创建并激活环境
 python -m venv .venv
 source .venv/bin/activate
+```
 
-# 安装依赖
+### 2. Install dependencies
+
+```bash
 pip install -r requirements.txt
+```
 
-### 环境变量
+### 3. Configure environment variables
 
-复制示例文件并填写自己的密钥：
+Copy the example environment file and fill in your own keys:
 
 ```bash
 cp .env.example .env
 ```
+
+Required or commonly used variables:
+
+```env
+ChatTongyi_API_KEY=
+S2_API_KEY=
+QDRANT_API_KEY=
+QDRANT_URL=http://qdrant:6333
+QDRANT_CLOUDE_URL=
+vision_model_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+REDIS_HOST=redis
+REDIS_PORT=6379
+```
+
+### 4. Run with Docker Compose
+
+```bash
+docker compose up --build
+```
+
+Then open:
+
+```text
+http://localhost:8000
+```
+
+### 5. Run locally without Docker
+
+Start Redis separately, then run:
+
+```bash
+uvicorn server:app --host 0.0.0.0 --port 8000
+```
+
+## Runtime Data
+
+The following files and directories are generated locally and intentionally ignored by Git:
+
+- `.env`
+- `.venv/`
+- `__pycache__/`
+- `papers/`
+- `feedback_memory_db/`
+- `qdrant_storage/`
+- `*.sqlite`, `*.sqlite-shm`, `*.sqlite-wal`
+
+Use `.env.example` as the public template for required configuration.
+
+## GitHub Publishing Checklist
+
+Before pushing to GitHub:
+
+```bash
+git status --short
+git ls-files --others --exclude-standard
+git diff --cached --check
+```
+
+Make sure real API keys, local databases, generated reports, vector-store files, and virtual environments are not staged.
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
