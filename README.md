@@ -112,18 +112,6 @@ The following files and directories are generated locally and intentionally igno
 
 Use `.env.example` as the public template for required configuration.
 
-## GitHub Publishing Checklist
-
-Before pushing to GitHub:
-
-```bash
-git status --short
-git ls-files --others --exclude-standard
-git diff --cached --check
-```
-
-Make sure real API keys, local databases, generated reports, vector-store files, and virtual environments are not staged.
-
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
