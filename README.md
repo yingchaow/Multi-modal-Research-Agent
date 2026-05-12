@@ -40,14 +40,3 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 ```
-
-`.env` 包含 API Key 和私有服务地址，已被 `.gitignore` 排除，严禁提交到 GitHub。
-
-### GitHub 发布前检查
-
-```bash
-git status --short
-git ls-files --others --exclude-standard
-```
-
-确认不要提交 `.env`、`.venv/`、`*.sqlite*`、`qdrant_storage/`、`feedback_memory_db/`、`papers/` 等运行时数据。
